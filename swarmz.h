@@ -3,7 +3,6 @@
 #include <vector>
 #include <unordered_map>
 #include <cmath>
-#include <iostream>
 #include <random>
 
 # define PI2 6.28318530717958647692
@@ -130,6 +129,43 @@ namespace sw {
         std::vector<Boid> *boids;
         std::unordered_map<Vec3, std::vector<Boid *>> voxelCache;
         std::mt19937 eng;
+
+        void updateBoid(Boid& b)
+        {
+            Vec3 separationSum;
+            Vec3 headingSum;
+            Vec3 positionSum;
+            auto nearby = getNearbyBoids(b);
+            for (NearbyBoid& closeBoid : nearby) {
+                if (closeBoid.distance == 0) {
+                    separationSum += Vec3::GetRandomUniform(eng) * 1000;
+                }
+                else {
+                    separationSum += closeBoid.direction.Negative() / std::pow(closeBoid.distance, 2);
+                }
+
+                headingSum += closeBoid.boid->Velocity;
+                positionSum += closeBoid.boid->Position;
+            }
+
+            // Separation: steer to avoid crowding local flockmates
+            Vec3 separation = nearby.size() > 0 ? separationSum / nearby.size() : separationSum;
+
+            // Alignment: steer towards the average heading of local flockmates
+            Vec3 alignment = nearby.size() > 0 ? headingSum / nearby.size() : headingSum;
+
+            // Cohesion: steer to move toward the average position of local flockmates
+            Vec3 cohesion = nearby.size() > 0 ? positionSum / nearby.size() : positionSum;
+
+            // calculate boid acceleration
+            Vec3 acceleration;
+            acceleration += separation * SeparationWeight;
+            acceleration += alignment * AlignmentWeight;
+            acceleration += cohesion * CohesionWeight;
+            b.Acceleration = acceleration.ClampLength(MaxAcceleration);
+        }
+
+
     public:
         float SeparationWeight = 1;
         float AlignmentWeight = 1;
@@ -145,53 +181,12 @@ namespace sw {
         }
 
         void Update(float delta) {
-            std::cout.precision(3);
-            std::cout << std::fixed;
             if (PerceptionRadius == 0) {
                 PerceptionRadius = 1;
             }
             buildVoxelCache();
             for (auto &b : *boids) {
-                auto nearby = getNearbyBoids(b);
-                std::cout << "Boid " << b.Position.X << ", " << b.Position.Y << ", " << b.Position.Z << "\n";
-
-                Vec3 separationSum;
-                Vec3 headingSum;
-                Vec3 positionSum;
-                for (auto &near : nearby) {
-                    std::cout << "   ::> B " << near.boid->Position.X << ", " << near.boid->Position.Y << ", " << near.boid->Position.Z << "\n";
-
-
-                    if (near.distance == 0) {
-                        separationSum += Vec3::GetRandomUniform(eng) * 1000;
-                    } else {
-                        separationSum += near.direction.Negative() / std::pow(near.distance, 2);
-                    }
-
-                    headingSum += near.boid->Velocity;
-                    positionSum += near.boid->Position;
-                }
-
-                // Separation: steer to avoid crowding local flockmates
-                Vec3 separation = nearby.size() > 0 ? separationSum / nearby.size() : separationSum;
-
-                // Alignment: steer towards the average heading of local flockmates
-                Vec3 alignment = nearby.size() > 0 ? headingSum / nearby.size() : b.Velocity;
-
-                // Cohesion: steer to move toward the average position of local flockmates
-                Vec3 cohesion = nearby.size() > 0 ? positionSum / nearby.size() : b.Position;
-
-                // calculate boid acceleration
-                Vec3 acceleration;
-                acceleration += separation * SeparationWeight;
-                acceleration += alignment * AlignmentWeight;
-                acceleration += cohesion * CohesionWeight;
-                b.Acceleration = acceleration.ClampLength(MaxAcceleration);
-
-                std::cout << "   --> S " << separation.X << ", " << separation.Y << ", " << separation.Z << "\n";
-                std::cout << "   --> L " << alignment.X << ", " << alignment.Y << ", " << alignment.Z << "\n";
-                std::cout << "   --> C " << cohesion.X << ", " << cohesion.Y << ", " << cohesion.Z << "\n";
-                std::cout << "   ==> A " << acceleration.X << ", " << acceleration.Y << ", " << acceleration.Z << std::endl;
+                updateBoid(b);
             }
 
             for (auto &b : *boids) {
@@ -205,8 +200,6 @@ namespace sw {
             std::vector<NearbyBoid> result;
 
             Vec3 voxelPos = getVoxelForBoid(b);
-            //std::cout << "Nearby voxels for boid " << b.Position.X << ", " << b.Position.Y << ", " << b.Position.Z << " in Voxel "
-            //    << voxelPos.X << ", " << voxelPos.Y << ", " << voxelPos.Z << "\n";
             voxelPos.X -= 1;
             voxelPos.Y -= 1;
             voxelPos.Z -= 1;
@@ -243,10 +236,10 @@ namespace sw {
 
         void buildVoxelCache() {
             voxelCache.clear();
+            voxelCache.reserve(boids->size());
             for (auto &b : *boids) {
                 voxelCache[getVoxelForBoid(b)].push_back(&b);
             }
-            std::cout << "Voxel cache size " << voxelCache.size() << "\n";
         }
 
         Vec3 getVoxelForBoid(const Boid &b) const noexcept {
