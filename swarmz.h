@@ -3,7 +3,6 @@
 #include <vector>
 #include <unordered_map>
 #include <cmath>
-#include <iostream>
 #include <random>
 
 # define PI2 6.28318530717958647692
@@ -105,7 +104,7 @@ namespace sw {
             return std::pow(distance, 2);
         } else if (type == DistanceType::INVERSE_QUADRATIC) {
             float quad = std::pow(distance, 2);
-            return quad == 0 ? 0 : quad;
+            return quad == 0 ? 0 : 1 / quad;
         } else {
             return distance; // throw exception instead?
         }
@@ -146,6 +145,47 @@ namespace sw {
     };
 
     class Swarm {
+    public:
+        float PerceptionRadius = 30;
+
+        float SeparationWeight = 1;
+        DistanceType SeparationType = DistanceType::INVERSE_QUADRATIC;
+
+        float AlignmentWeight = 1;
+        float CohesionWeight = 1;
+
+        float SteeringWeight = 0.1;
+        std::vector<Vec3> SteeringTargets;
+        DistanceType SteeringTargetType = DistanceType::LINEAR;
+
+        float BlindspotAngleDeg = 20;
+        float MaxAcceleration = 10;
+        float MaxVelocity = 20;
+
+        explicit Swarm(std::vector<Boid> *entities) : boids(entities) {
+            std::random_device rd;
+            eng = std::mt19937(rd());
+        }
+
+        void Update(float delta) {
+            UpdateAcceleration();
+
+            for (auto &b : *boids) {
+                b.Velocity = (b.Velocity + b.Acceleration * delta).ClampLength(MaxVelocity);
+                b.Position += b.Velocity * delta;
+            }
+        }
+
+        void UpdateAcceleration() {
+            if (PerceptionRadius == 0) {
+                PerceptionRadius = 1;
+            }
+            buildVoxelCache();
+            for (auto &b : *boids) {
+                updateBoid(b);
+            }
+        }
+
     private:
         std::vector<Boid> *boids;
         std::unordered_map<Vec3, std::vector<Boid *>> voxelCache;
@@ -155,6 +195,7 @@ namespace sw {
             Vec3 separationSum;
             Vec3 headingSum;
             Vec3 positionSum;
+            Vec3 po = b.Position;
             auto nearby = getNearbyBoids(b);
             for (NearbyBoid &closeBoid : nearby) {
                 if (closeBoid.distance == 0) {
@@ -163,7 +204,6 @@ namespace sw {
                     float separationFactor = TransformDistance(closeBoid.distance, SeparationType);
                     separationSum += closeBoid.direction.Negative() * separationFactor;
                 }
-
                 headingSum += closeBoid.boid->Velocity;
                 positionSum += closeBoid.boid->Position;
             }
@@ -205,48 +245,6 @@ namespace sw {
             b.Acceleration = acceleration.ClampLength(MaxAcceleration);
         }
 
-
-    public:
-        float PerceptionRadius = 10;
-
-        float SeparationWeight = 0;
-        DistanceType SeparationType = DistanceType::INVERSE_QUADRATIC;
-
-        float AlignmentWeight = 0;
-        float CohesionWeight = 0;
-
-        float SteeringWeight = 1;
-        std::vector<Vec3> SteeringTargets;
-        DistanceType SteeringTargetType = DistanceType::LINEAR;
-
-        float BlindspotAngleDeg = 0;
-        float MaxAcceleration = 20;
-        float MaxVelocity = 20;
-
-        explicit Swarm(std::vector<Boid> *entities) : boids(entities) {
-            std::random_device rd;
-            eng = std::mt19937(rd());
-        }
-
-        void Update(float delta) {
-            UpdateAcceleration();
-
-            for (auto &b : *boids) {
-                b.Velocity = (b.Velocity + b.Acceleration * delta).ClampLength(MaxVelocity);
-                b.Position += b.Velocity * delta;
-            }
-        }
-
-        void UpdateAcceleration() {
-            if (PerceptionRadius == 0) {
-                PerceptionRadius = 1;
-            }
-            buildVoxelCache();
-            for (auto &b : *boids) {
-                updateBoid(b);
-            }
-        }
-
         std::vector<NearbyBoid> getNearbyBoids(const Boid &b) const {
             std::vector<NearbyBoid> result;
 
@@ -257,28 +255,7 @@ namespace sw {
             for (int x = 0; x < 4; x++) {
                 for (int y = 0; y < 4; y++) {
                     for (int z = 0; z < 4; z++) {
-                        auto iter = voxelCache.find(voxelPos);
-                        if (iter != voxelCache.end()) {
-                            int added = 0;
-                            for (Boid *test : iter->second) {
-                                const Vec3 &p1 = b.Position;
-                                const Vec3 &p2 = test->Position;
-                                Vec3 vec(p2.X - p1.X, p2.Y - p1.Y, p2.Z - p1.Z);
-                                float distance = vec.Length();
-                                float blindAngle = b.Velocity.Negative().AngleTo(vec);
-                                if ((&b) != test && distance <= PerceptionRadius && BlindspotAngleDeg <= blindAngle) {
-                                    NearbyBoid nb;
-                                    nb.boid = test;
-                                    nb.distance = distance;
-                                    nb.direction = vec;
-                                    result.push_back(nb);
-                                    added++;
-                                    if (added >= 10) { // more than 10 boids per voxel are overkill to process
-                                        break;
-                                    }
-                                }
-                            }
-                        }
+                        checkVoxelForBoids(b, result, voxelPos);
                         voxelPos.Z++;
                     }
                     voxelPos.Z -= 4;
@@ -288,6 +265,31 @@ namespace sw {
                 voxelPos.X++;
             }
             return result;
+        }
+
+        void checkVoxelForBoids(const Boid &b, std::vector<NearbyBoid> &result, const Vec3 &voxelPos) const {
+            auto iter = voxelCache.find(voxelPos);
+            if (iter != voxelCache.end()) {
+                int added = 0;
+                for (Boid *test : iter->second) {
+                    const Vec3 &p1 = b.Position;
+                    const Vec3 &p2 = test->Position;
+                    Vec3 vec = p2 - p1;
+                    float distance = vec.Length();
+                    float blindAngle = b.Velocity.Negative().AngleTo(vec);
+                    if ((&b) != test && distance <= PerceptionRadius && BlindspotAngleDeg <= blindAngle) {
+                        NearbyBoid nb;
+                        nb.boid = test;
+                        nb.distance = distance;
+                        nb.direction = vec;
+                        result.push_back(nb);
+                        added++;
+                        if (added >= 10) { // more than 10 boids per voxel are overkill to process
+                            break;
+                        }
+                    }
+                }
+            }
         }
 
         void buildVoxelCache() {
