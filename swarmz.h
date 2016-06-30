@@ -68,7 +68,7 @@ namespace sw {
             if (l1 == 0 || l2 == 0) {
                 return 0;
             }
-            return std::acos(DotProduct(v) / (l1 * l2)) * 360 / PI2;
+            return static_cast<float>(std::acos(DotProduct(v) / (l1 * l2)) * 360 / PI2);
         }
 
         Vec3 Normalized() const {
@@ -148,7 +148,8 @@ namespace std {
         result_type operator()(sw::Vec3 const &v) const {
             result_type const h1(std::hash<float>()(v.X));
             result_type const h2(std::hash<float>()(v.Y));
-            return h1 ^ (h2 << 1);
+            result_type const h3(std::hash<float>()(v.Z));
+            return h1 ^ ((h2 ^ (h3 << 1)) << 1);
         }
     };
 
