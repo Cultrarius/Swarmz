@@ -1,31 +1,31 @@
 /*
- * Author: Michael Galetzka, 2016
- *
- * This is free and unencumbered software released into the public domain.
- *
- * Anyone is free to copy, modify, publish, use, compile, sell, or
- * distribute this software, either in source code form or as a compiled
- * binary, for any purpose, commercial or non-commercial, and by any
- * means.
- *
- * In jurisdictions that recognize copyright laws, the author or authors
- * of this software dedicate any and all copyright interest in the
- * software to the public domain. We make this dedication for the benefit
- * of the public at large and to the detriment of our heirs and
- * successors. We intend this dedication to be an overt act of
- * relinquishment in perpetuity of all present and future rights to this
- * software under copyright law.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
- * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
- * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
- * IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES OR
- * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
- * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
- * OTHER DEALINGS IN THE SOFTWARE.
- *
- * For more information, please refer to <http://unlicense.org>
- */
+* Author: Michael Galetzka, 2016
+*
+* This is free and unencumbered software released into the public domain.
+*
+* Anyone is free to copy, modify, publish, use, compile, sell, or
+* distribute this software, either in source code form or as a compiled
+* binary, for any purpose, commercial or non-commercial, and by any
+* means.
+*
+* In jurisdictions that recognize copyright laws, the author or authors
+* of this software dedicate any and all copyright interest in the
+* software to the public domain. We make this dedication for the benefit
+* of the public at large and to the detriment of our heirs and
+* successors. We intend this dedication to be an overt act of
+* relinquishment in perpetuity of all present and future rights to this
+* software under copyright law.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+* EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+* IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+* OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+* ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+* OTHER DEALINGS IN THE SOFTWARE.
+*
+* For more information, please refer to <http://unlicense.org>
+*/
 
 #pragma once
 
@@ -127,14 +127,18 @@ namespace sw {
     float TransformDistance(float distance, DistanceType type) {
         if (type == DistanceType::LINEAR) {
             return distance;
-        } else if (type == DistanceType::INVERSE_LINEAR) {
+        }
+        else if (type == DistanceType::INVERSE_LINEAR) {
             return distance == 0 ? 0 : 1 / distance;
-        } else if (type == DistanceType::QUADRATIC) {
+        }
+        else if (type == DistanceType::QUADRATIC) {
             return std::pow(distance, 2);
-        } else if (type == DistanceType::INVERSE_QUADRATIC) {
+        }
+        else if (type == DistanceType::INVERSE_QUADRATIC) {
             float quad = std::pow(distance, 2);
             return quad == 0 ? 0 : 1 / quad;
-        } else {
+        }
+        else {
             return distance; // throw exception instead?
         }
     }
@@ -149,7 +153,7 @@ namespace std {
             result_type const h1(std::hash<float>()(v.X));
             result_type const h2(std::hash<float>()(v.Y));
             result_type const h3(std::hash<float>()(v.Z));
-            return h1 ^ ((h2 ^ (h3 << 1)) << 1);
+            return (h1 * 31 + h2) * 31 + h3;
         }
     };
 
@@ -226,11 +230,14 @@ namespace sw {
             Vec3 headingSum;
             Vec3 positionSum;
             Vec3 po = b.Position;
+
             auto nearby = getNearbyBoids(b);
+
             for (NearbyBoid &closeBoid : nearby) {
                 if (closeBoid.distance == 0) {
                     separationSum += Vec3::GetRandomUniform(eng) * 1000;
-                } else {
+                }
+                else {
                     float separationFactor = TransformDistance(closeBoid.distance, SeparationType);
                     separationSum += closeBoid.direction.Negative() * separationFactor;
                 }
@@ -260,11 +267,6 @@ namespace sw {
 
             // Steering: steer towards the nearest target location (like a moth to the light)
             Vec3 steering = (steeringTarget - b.Position).Normalized() * targetDistance;
-
-            auto p = b.Position;
-            auto a = positionSum;
-            auto d = avgPosition;
-            auto c = cohesion;
 
             // calculate boid acceleration
             Vec3 acceleration;
@@ -300,23 +302,18 @@ namespace sw {
         void checkVoxelForBoids(const Boid &b, std::vector<NearbyBoid> &result, const Vec3 &voxelPos) const {
             auto iter = voxelCache.find(voxelPos);
             if (iter != voxelCache.end()) {
-                int added = 0;
                 for (Boid *test : iter->second) {
                     const Vec3 &p1 = b.Position;
                     const Vec3 &p2 = test->Position;
                     Vec3 vec = p2 - p1;
                     float distance = vec.Length();
                     float blindAngle = b.Velocity.Negative().AngleTo(vec);
-                    if ((&b) != test && distance <= PerceptionRadius && BlindspotAngleDeg <= blindAngle) {
+                    if ((&b) != test && distance <= PerceptionRadius && (BlindspotAngleDeg <= blindAngle || b.Velocity.Length() == 0)) {
                         NearbyBoid nb;
                         nb.boid = test;
                         nb.distance = distance;
                         nb.direction = vec;
                         result.push_back(nb);
-                        added++;
-                        if (added >= 10) { // more than 10 boids per voxel are overkill to process
-                            break;
-                        }
                     }
                 }
             }
