@@ -10,6 +10,10 @@
 
 namespace sw {
 
+    enum class DistanceType {
+        LINEAR, INVERSE_LINEAR, QUADRATIC, INVERSE_QUADRATIC
+    };
+
     struct Vec3 {
         float X;
         float Y;
@@ -26,11 +30,11 @@ namespace sw {
             return std::sqrt(std::pow(X, 2) + std::pow(Y, 2) + std::pow(Z, 2));
         }
 
-        float DotProduct(const Vec3& v) const {
+        float DotProduct(const Vec3 &v) const {
             return X * v.X + Y * v.Y + Z * v.Z;
         }
 
-        float AngleTo(const Vec3& v) const {
+        float AngleTo(const Vec3 &v) const {
             float l1 = Length();
             float l2 = v.Length();
             if (l1 == 0 || l2 == 0) {
@@ -82,7 +86,7 @@ namespace sw {
             return *this;
         }
 
-        static Vec3 GetRandomUniform(std::mt19937& engine) {
+        static Vec3 GetRandomUniform(std::mt19937 &engine) {
             std::uniform_real_distribution<float> thetaRange(0.0f, PI2);
             std::uniform_real_distribution<float> oneRange(0, 1);
             float theta = thetaRange(engine);
@@ -91,6 +95,21 @@ namespace sw {
             return Vec3(r * cos(theta), r * sin(theta), z);
         }
     };
+
+    float TransformDistance(float distance, DistanceType type) {
+        if (type == DistanceType::LINEAR) {
+            return distance;
+        } else if (type == DistanceType::INVERSE_LINEAR) {
+            return distance == 0 ? 0 : 1 / distance;
+        } else if (type == DistanceType::QUADRATIC) {
+            return std::pow(distance, 2);
+        } else if (type == DistanceType::INVERSE_QUADRATIC) {
+            float quad = std::pow(distance, 2);
+            return quad == 0 ? 0 : quad;
+        } else {
+            return distance; // throw exception instead?
+        }
+    }
 }
 
 namespace std {
@@ -132,22 +151,31 @@ namespace sw {
         std::unordered_map<Vec3, std::vector<Boid *>> voxelCache;
         std::mt19937 eng;
 
-        void updateBoid(Boid& b)
-        {
+        void updateBoid(Boid &b) {
             Vec3 separationSum;
             Vec3 headingSum;
             Vec3 positionSum;
             auto nearby = getNearbyBoids(b);
-            for (NearbyBoid& closeBoid : nearby) {
+            for (NearbyBoid &closeBoid : nearby) {
                 if (closeBoid.distance == 0) {
                     separationSum += Vec3::GetRandomUniform(eng) * 1000;
-                }
-                else {
-                    separationSum += closeBoid.direction.Negative() / closeBoid.distance;
+                } else {
+                    float separationFactor = TransformDistance(closeBoid.distance, SeparationType);
+                    separationSum += closeBoid.direction.Negative() * separationFactor;
                 }
 
                 headingSum += closeBoid.boid->Velocity;
                 positionSum += closeBoid.boid->Position;
+            }
+
+            Vec3 steeringTarget = b.Position;
+            float targetDistance = -1;
+            for (auto &target : SteeringTargets) {
+                float distance = TransformDistance(target.DistanceTo(b.Position), SteeringTargetType);
+                if (targetDistance < 0 || distance < targetDistance) {
+                    steeringTarget = target;
+                    targetDistance = distance;
+                }
             }
 
             // Separation: steer to avoid crowding local flockmates
@@ -158,26 +186,42 @@ namespace sw {
 
             // Cohesion: steer to move toward the average position of local flockmates
             Vec3 avgPosition = nearby.size() > 0 ? positionSum / nearby.size() : b.Position;
-            Vec3 cohesion = b.Position - avgPosition;
+            Vec3 cohesion = avgPosition - b.Position;
+
+            // Steering: steer towards the nearest target location (like a moth to the light)
+            Vec3 steering = (steeringTarget - b.Position).Normalized() * targetDistance;
+
+            auto p = b.Position;
+            auto a = positionSum;
+            auto d = avgPosition;
+            auto c = cohesion;
 
             // calculate boid acceleration
             Vec3 acceleration;
             acceleration += separation * SeparationWeight;
             acceleration += alignment * AlignmentWeight;
             acceleration += cohesion * CohesionWeight;
+            acceleration += steering * SteeringWeight;
             b.Acceleration = acceleration.ClampLength(MaxAcceleration);
         }
 
 
     public:
-        float SeparationWeight = 1;
-        float AlignmentWeight = 1;
-        float CohesionWeight = 1;
-        float PerceptionRadius = 1;
-        float BlindspotAngleDeg = 45;
-        float MaxAcceleration = 0.1;
-        float MaxVelocity = 2;
-        Vec3 SteeringTarget;
+        float PerceptionRadius = 10;
+
+        float SeparationWeight = 0;
+        DistanceType SeparationType = DistanceType::INVERSE_QUADRATIC;
+
+        float AlignmentWeight = 0;
+        float CohesionWeight = 0;
+
+        float SteeringWeight = 1;
+        std::vector<Vec3> SteeringTargets;
+        DistanceType SteeringTargetType = DistanceType::LINEAR;
+
+        float BlindspotAngleDeg = 0;
+        float MaxAcceleration = 20;
+        float MaxVelocity = 20;
 
         explicit Swarm(std::vector<Boid> *entities) : boids(entities) {
             std::random_device rd;
@@ -217,8 +261,8 @@ namespace sw {
                         if (iter != voxelCache.end()) {
                             int added = 0;
                             for (Boid *test : iter->second) {
-                                const Vec3& p1 = b.Position;
-                                const Vec3& p2 = test->Position;
+                                const Vec3 &p1 = b.Position;
+                                const Vec3 &p2 = test->Position;
                                 Vec3 vec(p2.X - p1.X, p2.Y - p1.Y, p2.Z - p1.Z);
                                 float distance = vec.Length();
                                 float blindAngle = b.Velocity.Negative().AngleTo(vec);
@@ -229,7 +273,7 @@ namespace sw {
                                     nb.direction = vec;
                                     result.push_back(nb);
                                     added++;
-                                    if (added >= 10) {
+                                    if (added >= 10) { // more than 10 boids per voxel are overkill to process
                                         break;
                                     }
                                 }
