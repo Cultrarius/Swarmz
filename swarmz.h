@@ -3,6 +3,7 @@
 #include <vector>
 #include <unordered_map>
 #include <cmath>
+#include <iostream>
 #include <random>
 
 # define PI2 6.28318530717958647692
@@ -66,7 +67,11 @@ namespace sw {
         }
 
         Vec3 operator+(const Vec3 &other) const {
-            return Vec3(X * other.X, Y * other.Y, Z * other.Z);
+            return Vec3(X + other.X, Y + other.Y, Z + other.Z);
+        }
+
+        Vec3 operator-(const Vec3 &other) const {
+            return Vec3(X - other.X, Y - other.Y, Z - other.Z);
         }
 
         Vec3 ClampLength(float length) const {
@@ -109,13 +114,10 @@ namespace sw {
     struct Boid {
         Vec3 Position;
         Vec3 Velocity;
+        Vec3 Acceleration;
 
         explicit Boid(Vec3 pos, Vec3 vel) : Position(pos), Velocity(vel) {
         }
-
-    private:
-        friend class Swarm;
-        Vec3 Acceleration;
     };
 
     struct NearbyBoid {
@@ -141,7 +143,7 @@ namespace sw {
                     separationSum += Vec3::GetRandomUniform(eng) * 1000;
                 }
                 else {
-                    separationSum += closeBoid.direction.Negative() / std::pow(closeBoid.distance, 2);
+                    separationSum += closeBoid.direction.Negative() / closeBoid.distance;
                 }
 
                 headingSum += closeBoid.boid->Velocity;
@@ -155,7 +157,8 @@ namespace sw {
             Vec3 alignment = nearby.size() > 0 ? headingSum / nearby.size() : headingSum;
 
             // Cohesion: steer to move toward the average position of local flockmates
-            Vec3 cohesion = nearby.size() > 0 ? positionSum / nearby.size() : positionSum;
+            Vec3 avgPosition = nearby.size() > 0 ? positionSum / nearby.size() : b.Position;
+            Vec3 cohesion = b.Position - avgPosition;
 
             // calculate boid acceleration
             Vec3 acceleration;
@@ -174,6 +177,7 @@ namespace sw {
         float BlindspotAngleDeg = 45;
         float MaxAcceleration = 0.1;
         float MaxVelocity = 2;
+        Vec3 SteeringTarget;
 
         explicit Swarm(std::vector<Boid> *entities) : boids(entities) {
             std::random_device rd;
@@ -181,18 +185,21 @@ namespace sw {
         }
 
         void Update(float delta) {
+            UpdateAcceleration();
+
+            for (auto &b : *boids) {
+                b.Velocity = (b.Velocity + b.Acceleration * delta).ClampLength(MaxVelocity);
+                b.Position += b.Velocity * delta;
+            }
+        }
+
+        void UpdateAcceleration() {
             if (PerceptionRadius == 0) {
                 PerceptionRadius = 1;
             }
             buildVoxelCache();
             for (auto &b : *boids) {
                 updateBoid(b);
-            }
-
-            for (auto &b : *boids) {
-                b.Velocity = (b.Velocity + b.Acceleration * delta).ClampLength(MaxVelocity);
-                b.Position += b.Velocity * delta;
-                b.Acceleration = Vec3();
             }
         }
 
@@ -208,6 +215,7 @@ namespace sw {
                     for (int z = 0; z < 4; z++) {
                         auto iter = voxelCache.find(voxelPos);
                         if (iter != voxelCache.end()) {
+                            int added = 0;
                             for (Boid *test : iter->second) {
                                 const Vec3& p1 = b.Position;
                                 const Vec3& p2 = test->Position;
@@ -220,6 +228,10 @@ namespace sw {
                                     nb.distance = distance;
                                     nb.direction = vec;
                                     result.push_back(nb);
+                                    added++;
+                                    if (added >= 10) {
+                                        break;
+                                    }
                                 }
                             }
                         }
