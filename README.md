@@ -67,4 +67,7 @@ while (true) {
 
 If you do not want the swarm to even update the boids velocity automatically (because you want to debug the result or you want to scale the acceleration per boid), then you can just call `UpdateAcceleration()` instead of the `Update(deltaSeconds)` on the swarm.
 
+You can of course adjust the swarm parameters as well as the boid list during the loop to change the swarm behaviour over time.
+The library is, however, *not* thread-safe (so please no changes during the swarm update)!
+
 That's basically it, have fun! :)
