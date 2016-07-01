@@ -1,6 +1,6 @@
 #include <iostream>
 #include <random>
-#include "swarmz.h"
+#include "../swarmz.h"
 #include "timing.h"
 
 using namespace std;
