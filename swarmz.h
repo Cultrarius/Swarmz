@@ -141,25 +141,6 @@ namespace sw {
         }
     };
 
-    float TransformDistance(float distance, DistanceType type) {
-        if (type == DistanceType::LINEAR) {
-            return distance;
-        }
-        else if (type == DistanceType::INVERSE_LINEAR) {
-            return distance == 0 ? 0 : 1 / distance;
-        }
-        else if (type == DistanceType::QUADRATIC) {
-            return std::pow(distance, 2);
-        }
-        else if (type == DistanceType::INVERSE_QUADRATIC) {
-            float quad = std::pow(distance, 2);
-            return quad == 0 ? 0 : 1 / quad;
-        }
-        else {
-            return distance; // throw exception instead?
-        }
-    }
-
     struct Boid {
         Vec3 Position;
         Vec3 Velocity;
@@ -332,6 +313,25 @@ namespace sw {
             voxelPos.Y = static_cast<int>(p.Y / r);
             voxelPos.Z = static_cast<int>(p.Z / r);
             return voxelPos;
+        }
+
+        float TransformDistance(float distance, DistanceType type) {
+            if (type == DistanceType::LINEAR) {
+                return distance;
+            }
+            else if (type == DistanceType::INVERSE_LINEAR) {
+                return distance == 0 ? 0 : 1 / distance;
+            }
+            else if (type == DistanceType::QUADRATIC) {
+                return std::pow(distance, 2);
+            }
+            else if (type == DistanceType::INVERSE_QUADRATIC) {
+                float quad = std::pow(distance, 2);
+                return quad == 0 ? 0 : 1 / quad;
+            }
+            else {
+                return distance; // throw exception instead?
+            }
         }
     };
 }
