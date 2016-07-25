@@ -106,6 +106,11 @@ namespace sw {
             return Vec3(X - other.X, Y - other.Y, Z - other.Z);
         }
 
+        bool operator==(const Vec3 &rhs) const
+        {
+            return X == rhs.X && Y == rhs.Y && Z == rhs.Z;
+        }
+
         Vec3 ClampLength(float length) const {
             float l = Length();
             if (l > length) {
@@ -121,6 +126,18 @@ namespace sw {
             float r = sqrt(oneRange(engine));
             float z = sqrt(1.0f - r * r) * (oneRange(engine) > 0.5f ? -1.0f : 1.0f);
             return Vec3(r * cos(theta), r * sin(theta), z);
+        }
+    };
+
+    struct Vec3Hasher
+    {
+        typedef std::size_t result_type;
+
+        result_type operator()(sw::Vec3 const &v) const {
+            result_type const h1(std::hash<float>()(v.X));
+            result_type const h2(std::hash<float>()(v.Y));
+            result_type const h3(std::hash<float>()(v.Z));
+            return (h1 * 31 + h2) * 31 + h3;
         }
     };
 
@@ -142,27 +159,7 @@ namespace sw {
             return distance; // throw exception instead?
         }
     }
-}
 
-namespace std {
-    template<>
-    struct hash<sw::Vec3> {
-        typedef std::size_t result_type;
-
-        result_type operator()(sw::Vec3 const &v) const {
-            result_type const h1(std::hash<float>()(v.X));
-            result_type const h2(std::hash<float>()(v.Y));
-            result_type const h3(std::hash<float>()(v.Z));
-            return (h1 * 31 + h2) * 31 + h3;
-        }
-    };
-
-    bool operator==(const sw::Vec3 &lhs, const sw::Vec3 &rhs) {
-        return lhs.X == rhs.X && lhs.Y == rhs.Y && lhs.Z == rhs.Z;
-    }
-}
-
-namespace sw {
     struct Boid {
         Vec3 Position;
         Vec3 Velocity;
@@ -222,7 +219,7 @@ namespace sw {
 
     private:
         std::vector<Boid> *boids;
-        std::unordered_map<Vec3, std::vector<Boid *>> voxelCache;
+        std::unordered_map<Vec3, std::vector<Boid *>, Vec3Hasher> voxelCache;
         std::mt19937 eng;
 
         void updateBoid(Boid &b) {
@@ -267,7 +264,7 @@ namespace sw {
 
             // Steering: steer towards the nearest target location (like a moth to the light)
             Vec3 steering = (steeringTarget - b.Position).Normalized() * targetDistance;
-
+            
             // calculate boid acceleration
             Vec3 acceleration;
             acceleration += separation * SeparationWeight;
@@ -327,7 +324,7 @@ namespace sw {
             }
         }
 
-        Vec3 getVoxelForBoid(const Boid &b) const noexcept {
+        Vec3 getVoxelForBoid(const Boid &b) const {
             float r = std::abs(PerceptionRadius);
             const Vec3 &p = b.Position;
             Vec3 voxelPos;
