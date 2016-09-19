@@ -2,7 +2,9 @@
 
 <a href="http://unlicense.org/"><img src="https://img.shields.io/badge/license-Public%20Domain-blue.svg"></a>
 
-A free, header-only C++ swarming (flocking) library for real-time applications
+A free, header-only C++ swarming (flocking) library for real-time applications.
+
+An example usage can be seen in [this particle editor plugin](https://cultrarius.github.io/UE4ParticleEditorPlugin#swarm) for the Unreal Engine 4.
 
 # Usage
 
