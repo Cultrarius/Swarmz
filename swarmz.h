@@ -55,7 +55,7 @@ namespace sw {
         }
 
         float Length() const {
-            return std::sqrt(std::pow(X, 2) + std::pow(Y, 2) + std::pow(Z, 2));
+			return std::sqrtf(std::powf(X, 2) + std::powf(Y, 2) + std::powf(Z, 2));
         }
 
         float DotProduct(const Vec3 &v) const {
@@ -145,6 +145,7 @@ namespace sw {
         Vec3 Position;
         Vec3 Velocity;
         Vec3 Acceleration;
+		int neighbours;
 
         explicit Boid(Vec3 pos, Vec3 vel) : Position(pos), Velocity(vel) {
         }
@@ -180,6 +181,7 @@ namespace sw {
         }
 
         void Update(float delta) {
+			BlindspotAngleDegCompareValue = cosf(PI2 * BlindspotAngleDeg / 360.0f);
             UpdateAcceleration();
 
             for (auto &b : *boids) {
@@ -202,6 +204,15 @@ namespace sw {
         std::vector<Boid> *boids;
         std::unordered_map<Vec3, std::vector<Boid *>, Vec3Hasher> voxelCache;
         std::mt19937 eng;
+		float BlindspotAngleDegCompareValue = 0; // = cos(PI2 * BlindspotAngleDeg / 360)
+
+        struct NearbyBoidsInformation
+        {
+			Vec3 separationSum;
+			Vec3 headingSum;
+			Vec3 positionSum;
+			int count;
+        };
 
         void updateBoid(Boid &b) {
             Vec3 separationSum;
@@ -210,6 +221,7 @@ namespace sw {
             Vec3 po = b.Position;
 
             auto nearby = getNearbyBoids(b);
+			b.neighbours = nearby.size();
 
             for (NearbyBoid &closeBoid : nearby) {
                 if (closeBoid.distance == 0) {
@@ -257,21 +269,22 @@ namespace sw {
 
         std::vector<NearbyBoid> getNearbyBoids(const Boid &b) const {
             std::vector<NearbyBoid> result;
+			result.reserve(boids->size());
 
             Vec3 voxelPos = getVoxelForBoid(b);
             voxelPos.X -= 1;
             voxelPos.Y -= 1;
             voxelPos.Z -= 1;
-            for (int x = 0; x < 4; x++) {
-                for (int y = 0; y < 4; y++) {
-                    for (int z = 0; z < 4; z++) {
+            for (int x = 0; x < 3; x++) {
+                for (int y = 0; y < 3; y++) {
+                    for (int z = 0; z < 3; z++) {
                         checkVoxelForBoids(b, result, voxelPos);
                         voxelPos.Z++;
                     }
-                    voxelPos.Z -= 4;
+                    voxelPos.Z -= 3;
                     voxelPos.Y++;
                 }
-                voxelPos.Y -= 4;
+                voxelPos.Y -= 3;
                 voxelPos.X++;
             }
             return result;
@@ -285,8 +298,15 @@ namespace sw {
                     const Vec3 &p2 = test->Position;
                     Vec3 vec = p2 - p1;
                     float distance = vec.Length();
-                    float blindAngle = b.Velocity.Negative().AngleTo(vec);
-                    if ((&b) != test && distance <= PerceptionRadius && (BlindspotAngleDeg <= blindAngle || b.Velocity.Length() == 0)) {
+
+					float compareValue = 0;
+					float l1 = vec.Length();
+					float l2 = b.Velocity.Length();
+					if (l1 != 0 && l2 != 0) {
+						compareValue = b.Velocity.Negative().DotProduct(vec) / (l1 * l2);
+					}
+
+                    if ((&b) != test && distance <= PerceptionRadius && (BlindspotAngleDegCompareValue > compareValue || b.Velocity.Length() == 0)) {
                         NearbyBoid nb;
                         nb.boid = test;
                         nb.distance = distance;
